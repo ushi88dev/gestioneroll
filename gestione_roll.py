@@ -232,20 +232,42 @@ rb_uscita  = tk.Radiobutton(direzione_frame, text="USCITA",  variable=direzione_
 rb_uscita.pack(side="left")
 
 # Quantità
+
 lbl_font = ("Arial", 11, "bold")
 entry_font = ("Arial", 12)
+"""
+tk.Label(frame, text="Roll:",font=lbl_font).grid(row=3, column=0, sticky="e", pady=3, padx=(0,2))
+roll_entry = tk.Entry(frame, width=6, font=("Arial", 11), justify="center")
+roll_entry.grid(row=3, column=1, sticky="w", pady=3, padx=(2,6))
 
-tk.Label(frame, text="Roll:",          font=lbl_font).grid(row=3, column=0, sticky="e", pady=7, padx=(0,10))
-roll_entry = tk.Entry(frame, width=8, font=("Arial", 11), justify="center")
-roll_entry.grid(row=3, column=1, sticky="w", pady=7)
+tk.Label(frame, text="Griglia:",  font=lbl_font).grid(row=3, column=2, sticky="e", pady=3, padx=(6,2))
+griglia_entry = tk.Entry(frame, width=6, font=("Arial", 11), justify="center")
+griglia_entry.grid(row=3, column=3, sticky="w", pady=3, padx=(2,6))
 
-tk.Label(frame, text="Griglia:",       font=lbl_font).grid(row=4, column=0, sticky="e", pady=7, padx=(0,10))
-griglia_entry = tk.Entry(frame, width=8, font=("Arial", 11), justify="center")
-griglia_entry.grid(row=4, column=1, sticky="w", pady=7)
+tk.Label(frame, text="Cassetta CPR:", font=lbl_font).grid(row=3, column=4, sticky="e", pady=3, padx=(6,2))
+cpr_entry = tk.Entry(frame, width=6, font=("Arial", 11), justify="center")
+cpr_entry.grid(row=3, column=5, sticky="w", pady=3, padx=0)
+"""
+# Frame Roll
+frame_roll = tk.Frame(frame)
+frame_roll.grid(row=3, column=0, sticky="w", padx=(0, 6), pady=4)
+tk.Label(frame_roll, text="Roll:", font=lbl_font).pack(side="left", padx=(0, 4))
+roll_entry = tk.Entry(frame_roll, width=7, font=entry_font, justify="center")
+roll_entry.pack(side="left")
 
-tk.Label(frame, text="Cassetta CPR:",  font=lbl_font).grid(row=5, column=0, sticky="e", pady=7, padx=(0,10))
-cpr_entry = tk.Entry(frame, width=10, font=("Arial", 11), justify="center")
-cpr_entry.grid(row=5, column=1, sticky="w", pady=7)
+# Frame Griglia
+frame_griglia = tk.Frame(frame)
+frame_griglia.grid(row=3, column=1, sticky="w", padx=(0,6), pady=4)
+tk.Label(frame_griglia, text="Griglia:", font=lbl_font).pack(side="left", padx=(0, 4))
+griglia_entry = tk.Entry(frame_griglia, width=7, font=entry_font, justify="center")
+griglia_entry.pack(side="left")
+
+# Frame Cassetta CPR
+frame_cpr = tk.Frame(frame)
+frame_cpr.grid(row=3, column=2, sticky="w", padx=(0,6), pady=4)
+tk.Label(frame_cpr, text="Cassetta CPR:", font=lbl_font).pack(side="left", padx=(0, 4))
+cpr_entry = tk.Entry(frame_cpr, width=7, font=entry_font, justify="center")
+cpr_entry.pack(side="left")
 
 # Pulsanti
 btn_frame = tk.Frame(frame)
