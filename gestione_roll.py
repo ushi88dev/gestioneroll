@@ -4,7 +4,9 @@ from tkinter import ttk, messagebox
 from datetime import date
 import csv
 from tkcalendar import DateEntry
-import winsound  # solo Windows
+#import winsound  # solo Windows
+import sys
+import time
 
 # Connessione database
 conn = sqlite3.connect('supporti.db')
@@ -85,7 +87,10 @@ def registra_movimenti():
     cpr_entry.delete(0, tk.END)
 
     # Beep conferma
-    winsound.Beep(800, 120)
+    #winsound.Beep(800, 120)
+    beep_semplice()
+    time.sleep(0.3)
+    beep_semplice()
 
     aggiorna_inventario()
     aggiorna_storico()
@@ -97,7 +102,10 @@ def annulla_ultimo():
     cursor.execute('DELETE FROM movimenti WHERE id = (SELECT MAX(id) FROM movimenti)')
     conn.commit()
 
-    winsound.Beep(400, 200)  # beep diverso per annullamento
+    #winsound.Beep(400, 200)  # beep diverso per annullamento
+    beep_semplice()
+    time.sleep(0.3)
+    beep_semplice()
     aggiorna_inventario()
     aggiorna_storico()
 
@@ -176,6 +184,9 @@ def esporta_csv():
         writer.writerows(cursor.fetchall())
     messagebox.showinfo("Esportato", "Creato file: movimenti_supporti.csv")
 
+def beep_semplice():
+    sys.stdout.write('\a')
+    sys.stdout.flush()
 # ────────────────────────────────────────────────
 # INTERFACCIA GRAFICA
 # ────────────────────────────────────────────────
