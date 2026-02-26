@@ -147,7 +147,7 @@ def aggiorna_storico():
     for row in tree_storico.get_children():
         tree_storico.delete(row)
 
-    cursor.execute('SELECT data, articolo, direzione, magazzino, quantita FROM movimenti ORDER BY id DESC LIMIT 150')
+    cursor.execute('SELECT data, direzione, magazzino, articolo, quantita FROM movimenti ORDER BY id DESC LIMIT 150')
     for row in cursor.fetchall():
         tree_storico.insert('', 'end', values=row)
 
@@ -296,11 +296,11 @@ frame_sto = tk.Frame(notebook)
 notebook.add(frame_sto, text="Storico")
 
 tk.Label(frame_sto, text="Ultimi movimenti", font=("Arial", 11, "bold")).pack(pady=8)
-tree_storico = ttk.Treeview(frame_sto, columns=('Data','Articolo','Direzione','Magazzino','Qtà'), show='headings', height=18)
+tree_storico = ttk.Treeview(frame_sto, columns=('Data','Direzione','Magazzino','Articolo','Qtà'), show='headings', height=18)
 tree_storico.heading('Data', text='Data')
-tree_storico.heading('Articolo', text='Articolo')
 tree_storico.heading('Direzione', text='Mov.')
 tree_storico.heading('Magazzino', text='Magazzino')
+tree_storico.heading('Articolo', text='Articolo')
 tree_storico.heading('Qtà', text='Qtà')
 tree_storico.column('Data', width=90)
 tree_storico.column('Articolo', width=140)
