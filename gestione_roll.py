@@ -128,24 +128,21 @@ def aggiorna_inventario():
     articoli = ['Roll', 'Griglia', 'Cassetta CPR']
     magazzini = ['Carne', 'Ortofrutta', 'Freschi', 'Secchi']
 
-    # Dettaglio per magazzino × articolo
+    # Mostra solo combinazioni con saldo != 0
     for mag in magazzini:
         for art in articoli:
             saldo = calcola_saldo(art, mag)
-            tree_inventario.insert('', 'end', values=(mag, art, saldo))
+            if saldo != 0:
+                tree_inventario.insert('', 'end', values=(mag, art, saldo))
 
-    # Totali per magazzino
+    # Riga vuota di separazione (opzionale)
     tree_inventario.insert('', 'end', values=('', '', ''))
-    for mag in magazzini:
-        saldo = calcola_saldo(magazzino=mag)
-        tree_inventario.insert('', 'end', values=(f"Totale {mag}", '', saldo), tags=('total',))
 
-    # Totali per articolo
-    tree_inventario.insert('', 'end', values=('', '', ''))
+    # Totali per articolo (solo se hai movimenti)
     for art in articoli:
-        saldo = calcola_saldo(articolo=art)
-        tree_inventario.insert('', 'end', values=('', f"Totale {art}", saldo), tags=('total',))
-
+        totale_art = calcola_saldo(articolo=art)
+        if totale_art != 0:  # anche qui filtro per coerenza
+            tree_inventario.insert('', 'end', values=('', f"Totale {art}", totale_art), tags=('total',))
 def aggiorna_storico():
     for row in tree_storico.get_children():
         tree_storico.delete(row)
