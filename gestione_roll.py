@@ -92,7 +92,7 @@ def registra_movimenti():
     time.sleep(0.3)
     beep_semplice()
 
-    aggiorna_inventario()
+    #aggiorna_inventario()
     aggiorna_storico()
 
 def annulla_ultimo():
@@ -121,29 +121,6 @@ def aggiorna_direzione(*args):
         if direzione_var.get() not in ["ENTRATA", "USCITA"]:
             direzione_var.set("ENTRATA")
 
-def aggiorna_inventario():
-    for row in tree_inventario.get_children():
-        tree_inventario.delete(row)
-
-    articoli = ['Roll', 'Griglia', 'Cassetta CPR']
-    magazzini = ['Carne', 'Ortofrutta', 'Freschi', 'Secchi']
-
-    # Mostra solo combinazioni con saldo != 0
-    for mag in magazzini:
-        for art in articoli:
-            saldo = calcola_saldo(art, mag)
-            if saldo != 0:
-                tree_inventario.insert('', 'end', values=(mag, art, saldo))
-
-    # Riga vuota di separazione (opzionale)
-    tree_inventario.insert('', 'end', values=('', '', ''))
-
-    # Totali per articolo (solo se hai movimenti)
-    for art in articoli:
-        totale_art = calcola_saldo(articolo=art)
-        if totale_art != 0:  # anche qui filtro per coerenza
-            tree_inventario.insert('', 'end', values=('', f"Totale {art}", totale_art), tags=('total',))
-
 
 def aggiorna_storico():
     for item in tree_storico.get_children():
@@ -159,32 +136,45 @@ def aggiorna_storico():
     rows = cursor.fetchall()
 
     if not rows:
-        tree_storico.insert('', 'end', values=('', '', 'Nessun movimento', '', ''))
+        tree_storico.insert('', 'end', values=('', '', 'Nessun movimento registrato', '', ''))
         return
 
     # Raggruppa per data
     from collections import defaultdict
     grouped = defaultdict(list)
     for row in rows:
-        grouped[row[0]].append(row[1:])   # direzione, articolo, magazzino, quantita
+        grouped[row[0]].append(row[1:])  # direzione, articolo, magazzino, quantita
 
-    # Inserisci riepiloghi giorni (dal più recente)
+    articoli = ['Roll', 'Griglia', 'Cassetta CPR']
+
+    # Inserisci riepiloghi giorni
     for data in sorted(grouped.keys(), reverse=True):
         mov_giorno = grouped[data]
 
-        entrate = sum(q for d, _, _, q in mov_giorno if d == 'ENTRATA')
-        uscite = sum(q for d, _, _, q in mov_giorno if d == 'USCITA')
-        saldo = entrate - uscite
-        num_mov = len(mov_giorno)
+        # Calcola per articolo: entrate e uscite
+        riepilogo_articoli = []
+        for art in articoli:
+            entrate_art = sum(q for d, a, _, q in mov_giorno if a == art and d == 'ENTRATA')
+            uscite_art  = sum(q for d, a, _, q in mov_giorno if a == art and d == 'USCITA')
 
-        riepilogo_txt = f"ENTRATE: {entrate}   USCITE: {uscite}   SALDO GIORNO: {saldo:+}"
-        if num_mov > 0:
-            riepilogo_txt += f"   ({num_mov} mov.)"
+            if entrate_art > 0 or uscite_art > 0:
+                parti = []
+                if entrate_art > 0:
+                    parti.append(f"+{entrate_art}")
+                if uscite_art > 0:
+                    parti.append(f"-{uscite_art}")
+                
+                if parti:
+                    riepilogo_articoli.append(f"{art}: {' / '.join(parti)}")
+
+        num_mov = len(mov_giorno)
+        riepilogo_txt = "   ".join(riepilogo_articoli) if riepilogo_articoli else "Nessun movimento"
+        #riepilogo_txt += f"   ({num_mov} mov.)"
 
         iid = tree_storico.insert('', 'end', values=('', data, riepilogo_txt, '', ''), tags=('giorno',))
         movimenti_per_giorno[iid] = mov_giorno
 
-    print(f"Storico: caricati {len(grouped)} giorni")
+    #print(f"Storico: caricati {len(grouped)} giorni")
 
     tree_storico.update_idletasks()
 
@@ -326,20 +316,7 @@ tk.Button(btn_frame, text="REGISTRA", command=registra_movimenti,
 tk.Button(btn_frame, text="ANNULLA ULTIMO", command=annulla_ultimo,
           bg="#F44336", fg="white", font=("Arial", 10, "bold"), width=16).pack(side="left", padx=20)
 
-# ── Tab Inventario ──────────────────────────────
-frame_inv = tk.Frame(notebook)
-notebook.add(frame_inv, text="Inventario")
 
-tk.Label(frame_inv, text="Inventario attuale", font=("Arial", 11, "bold")).pack(pady=8)
-tree_inventario = ttk.Treeview(frame_inv, columns=('Magazzino','Articolo','Saldo'), show='headings', height=18)
-tree_inventario.heading('Magazzino', text='Magazzino')
-tree_inventario.heading('Articolo', text='Articolo')
-tree_inventario.heading('Saldo', text='Saldo')
-tree_inventario.column('Magazzino', width=180)
-tree_inventario.column('Articolo', width=180)
-tree_inventario.column('Saldo', width=100, anchor='center')
-tree_inventario.tag_configure('total', font=('Arial', 10, 'bold'))
-tree_inventario.pack(padx=10, pady=5, fill="both", expand=True)
 
 # ── Tab Storico ─────────────────────────────────
 frame_sto = tk.Frame(notebook)
@@ -359,9 +336,9 @@ tree_storico.heading('Dettaglio', text='Dettaglio / Saldo')
 tree_storico.column('#0', width=30)          # spazio per indentazione
 tree_storico.column('Icona', width=30, anchor='center')
 tree_storico.column('Data', width=110, anchor='center')
-tree_storico.column('Tipo', width=130)
+tree_storico.column('Tipo', width=300)
 tree_storico.column('Qtà', width=80, anchor='center')
-tree_storico.column('Dettaglio', width=350)
+tree_storico.column('Dettaglio', width=100)
 
 tree_storico.pack(padx=10, pady=5, fill="both", expand=True)
 # Bind doppio click
@@ -402,15 +379,13 @@ tree_report.column('Entrate', width=90, anchor='center')
 tree_report.column('Uscite', width=90, anchor='center')
 tree_report.pack(padx=10, pady=5, fill="both", expand=True)
 
-# Forza apertura del tab Storico all'avvio (per vedere subito se funziona)
-notebook.select(2)  # 0=Registrazione, 1=Inventario, 2=Storico, 3=Report
 
 # Esporta globale
 tk.Button(root, text="Esporta tutto in CSV", command=esporta_csv,
           bg="#2196F3", fg="white", font=("Arial", 10, "bold")).pack(pady=8)
 
 # Avvio
-aggiorna_inventario()
+##aggiorna_inventario()
 aggiorna_storico()
 genera_report()
 aggiorna_direzione()  # stato iniziale
