@@ -95,6 +95,7 @@ def registra_movimenti():
     #aggiorna_inventario()
     aggiorna_storico()
     aggiorna_valore_cauzioniOFC()
+    aggiorna_cauzioni_resi()
 
 def annulla_ultimo():
     if not messagebox.askyesno("Conferma", "Annullare l'ultimo movimento inserito?"):
@@ -110,6 +111,7 @@ def annulla_ultimo():
     aggiorna_inventario()
     aggiorna_storico()
     aggiorna_valore_cauzioniOFC()
+    aggiorna_cauzioni_resi()
 
 def aggiorna_direzione(*args):
     mag = magazzino_var.get()
@@ -249,6 +251,68 @@ def aggiorna_valore_cauzioniOFC():
     # Riga totale cumulato
     tree_cauzioni.insert('', 'end', values=('', '', '', '', f"Totale cauzioni cumulato: {totale_cumulato:.2f} €"), tags=('totale',))
 
+def aggiorna_cauzioni_resi():
+    for item in tree_cauzioni_resi.get_children():
+        tree_cauzioni_resi.delete(item)
+
+    cursor.execute('''
+        SELECT data, articolo, direzione, SUM(quantita) AS qty
+        FROM movimenti
+        WHERE magazzino IN ('Freschi', 'Secchi')
+        GROUP BY data, articolo, direzione
+        ORDER BY data DESC
+    ''')
+    rows = cursor.fetchall()
+
+    print(f"DEBUG Resi: trovati {len(rows)} record aggregati")
+
+    if not rows:
+        tree_cauzioni_resi.insert('', 'end', values=('', 'Nessun movimento in Freschi/Secchi', '', '', ''))
+        tree_cauzioni_resi.insert('', 'end', values=('', '', '', '', 'Totale cumulato: 0.00 €'), tags=('totale',))
+        return
+
+    from collections import defaultdict
+    grouped = defaultdict(lambda: defaultdict(int))
+    for data, art, dir_, qty in rows:
+        grouped[data][(art, dir_)] = qty
+
+    costi = {'Roll': 52, 'Griglia': 8, 'Cassetta CPR': 4}
+    totale_cumulato = 0.0
+
+    for data in sorted(grouped.keys(), reverse=True):
+        dati_giorno = grouped[data]
+
+        row_values = [data]
+        valore_giorno = 0.0
+
+        for art in ['Roll', 'Griglia', 'Cassetta CPR']:
+            entrate = dati_giorno.get((art, 'ENTRATA'), 0)
+            uscite  = dati_giorno.get((art, 'USCITA'), 0)
+
+            val_entrate = entrate * costi[art]
+            val_uscite  = uscite  * costi[art]
+            val_netto   = val_entrate - val_uscite
+
+            valore_giorno += val_netto
+
+            testo = ""
+            if entrate > 0:
+                testo += f"+{entrate} ({val_entrate:.2f} €)"
+            if uscite > 0:
+                testo += f"  -{uscite} ({val_uscite:.2f} €)" if testo else f"-{uscite} ({val_uscite:.2f} €)"
+
+            row_values.append(testo if testo else "—")
+
+        totale_cumulato += valore_giorno
+        row_values.append(f"{valore_giorno:+.2f} €")
+
+        tag = 'positivo' if valore_giorno > 0 else ('negativo' if valore_giorno < 0 else '')
+        tree_cauzioni_resi.insert('', 'end', values=row_values, tags=tag)
+
+    # Riga totale sempre visibile
+    tree_cauzioni_resi.insert('', 'end', values=('', '', '', '', f"Totale cumulato: {totale_cumulato:+.2f} €"), tags=('totale',))
+    print(f"DEBUG Resi: totale cumulato calcolato = {totale_cumulato:.2f} €")
+
 def genera_report():
     data_rep = calendario_report.get_date().strftime('%Y-%m-%d')
     for row in tree_report.get_children():
@@ -279,6 +343,36 @@ def esporta_csv():
         writer.writerows(cursor.fetchall())
     messagebox.showinfo("Esportato", "Creato file: movimenti_supporti.csv")
 
+def azzera_database():
+    if not messagebox.askyesno("CONFERMA CANCELLAZIONE", 
+                               "Vuoi veramente AZZERARE TUTTO il database?\n\n"
+                               "Tutti i movimenti, totali e dati verranno PERSI PER SEMPRE!\n"
+                               "Questa azione NON È REVERSIBILE.\n\n"
+                               "Procedi solo se sei sicuro."):
+        return
+
+    if not messagebox.askyesno("ULTIMA CONFERMA", 
+                               "ULTIMA AVVERTENZA:\n\n"
+                               "Stai per cancellare IRRECUPERABILMENTE tutti i dati.\n"
+                               "Sicuro al 100%?"):
+        return
+
+    # Cancella tutti i record
+    cursor.execute("DELETE FROM movimenti")
+    conn.commit()
+
+    # Aggiorna tutte le viste
+    aggiorna_storico()
+    aggiorna_cauzioni_c_o()
+    aggiorna_cauzioni_resi()
+    genera_report()
+
+    messagebox.showinfo("Database azzerato", 
+                        "Il database è stato completamente azzerato.\n"
+                        "Ora è vuoto e pronto per nuovi inserimenti.")
+
+    print("DEBUG: Database azzerato con successo")
+
 def beep_semplice():
     sys.stdout.write('\a')
     sys.stdout.flush()
@@ -288,7 +382,7 @@ def beep_semplice():
 
 root = tk.Tk()
 root.title("Gestione Roll / Griglie / CPR")
-root.geometry("1200x600")
+root.geometry("1000x600")
 root.resizable(False, False)
 
 notebook = ttk.Notebook(root)
@@ -361,6 +455,8 @@ tk.Button(btn_frame, text="REGISTRA", command=registra_movimenti,
 
 tk.Button(btn_frame, text="ANNULLA ULTIMO", command=annulla_ultimo,
           bg="#F44336", fg="white", font=("Arial", 10, "bold"), width=16).pack(side="left", padx=20)
+
+
 
 
 
@@ -449,8 +545,44 @@ tree_cauzioni.tag_configure('totale', font=('Arial', 10, 'bold'), background='#e
 
 tree_cauzioni.pack(padx=10, pady=5, fill="both", expand=True)
 
+
+# ── Tab Calcolo Cauzioni e Resi da CEDI ─────────
+frame_resi = tk.Frame(notebook)
+notebook.add(frame_resi, text="Cauzioni e Resi CEDI")
+
+tk.Label(frame_resi, text="Cauzioni e Resi – Freschi e Secchi", 
+         font=("Arial", 11, "bold")).pack(pady=8)
+
+tree_cauzioni_resi = ttk.Treeview(frame_resi, 
+                                  columns=('Data', 'Roll', 'Griglia', 'Cassetta CPR', 'Valore Giorno €'),
+                                  show='headings', height=18)
+
+tree_cauzioni_resi.heading('Data', text='Data')
+tree_cauzioni_resi.heading('Roll', text='Roll')
+tree_cauzioni_resi.heading('Griglia', text='Griglia')
+tree_cauzioni_resi.heading('Cassetta CPR', text='Cassetta CPR')
+tree_cauzioni_resi.heading('Valore Giorno €', text='Valore Giorno €')
+
+tree_cauzioni_resi.column('Data', width=100, anchor='center')
+tree_cauzioni_resi.column('Roll', width=180)
+tree_cauzioni_resi.column('Griglia', width=180)
+tree_cauzioni_resi.column('Cassetta CPR', width=180)
+tree_cauzioni_resi.column('Valore Giorno €', width=140, anchor='center')
+
+tree_cauzioni_resi.tag_configure('positivo', foreground='green')
+tree_cauzioni_resi.tag_configure('negativo', foreground='red')
+tree_cauzioni_resi.tag_configure('totale', font=('Arial', 10, 'bold'), background='#e6ffe6')
+
+tree_cauzioni_resi.pack(padx=10, pady=5, fill="both", expand=True)
 # Esporta globale
-tk.Button(root, text="Esporta tutto in CSV", command=esporta_csv, bg="#2196F3", fg="white", font=("Arial", 10, "bold")).pack(pady=8)
+bottom_frame = tk.Frame(root)
+bottom_frame.pack(pady=10, fill='x')
+
+tk.Button(bottom_frame, text="Esporta tutto in CSV", command=esporta_csv,
+          bg="#2196F3", fg="white", font=("Arial", 10, "bold")).pack(side="left", padx=20)
+
+tk.Button(bottom_frame, text="AZZERA DATABASE (ATTENZIONE!)", command=azzera_database,
+          bg="#F44336", fg="white", font=("Arial", 10, "bold")).pack(side="right", padx=20)
 
 # Avvio
 ##aggiorna_inventario()
@@ -458,5 +590,6 @@ aggiorna_storico()
 genera_report()
 aggiorna_direzione()  # stato iniziale
 aggiorna_valore_cauzioniOFC()
+aggiorna_cauzioni_resi()
 root.mainloop()
 conn.close()
