@@ -7,7 +7,7 @@ from tkcalendar import DateEntry
 #import winsound  # solo Windows
 import sys
 import time
-
+movimenti_per_giorno = {}   # iid_giorno → lista di tuple (direzione, articolo, magazzino, quantita)
 # Connessione database
 conn = sqlite3.connect('supporti.db')
 cursor = conn.cursor()
@@ -143,13 +143,75 @@ def aggiorna_inventario():
         totale_art = calcola_saldo(articolo=art)
         if totale_art != 0:  # anche qui filtro per coerenza
             tree_inventario.insert('', 'end', values=('', f"Totale {art}", totale_art), tags=('total',))
-def aggiorna_storico():
-    for row in tree_storico.get_children():
-        tree_storico.delete(row)
 
-    cursor.execute('SELECT data, direzione, magazzino, articolo, quantita FROM movimenti ORDER BY id DESC LIMIT 150')
-    for row in cursor.fetchall():
-        tree_storico.insert('', 'end', values=row)
+
+def aggiorna_storico():
+    for item in tree_storico.get_children():
+        tree_storico.delete(item)
+    
+    movimenti_per_giorno.clear()
+
+    cursor.execute('''
+        SELECT data, direzione, articolo, magazzino, quantita 
+        FROM movimenti 
+        ORDER BY data DESC, id DESC
+    ''')
+    rows = cursor.fetchall()
+
+    if not rows:
+        tree_storico.insert('', 'end', values=('', '', 'Nessun movimento', '', ''))
+        return
+
+    # Raggruppa per data
+    from collections import defaultdict
+    grouped = defaultdict(list)
+    for row in rows:
+        grouped[row[0]].append(row[1:])   # direzione, articolo, magazzino, quantita
+
+    # Inserisci riepiloghi giorni (dal più recente)
+    for data in sorted(grouped.keys(), reverse=True):
+        mov_giorno = grouped[data]
+
+        entrate = sum(q for d, _, _, q in mov_giorno if d == 'ENTRATA')
+        uscite = sum(q for d, _, _, q in mov_giorno if d == 'USCITA')
+        saldo = entrate - uscite
+        num_mov = len(mov_giorno)
+
+        riepilogo_txt = f"ENTRATE: {entrate}   USCITE: {uscite}   SALDO GIORNO: {saldo:+}"
+        if num_mov > 0:
+            riepilogo_txt += f"   ({num_mov} mov.)"
+
+        iid = tree_storico.insert('', 'end', values=('', data, riepilogo_txt, '', ''), tags=('giorno',))
+        movimenti_per_giorno[iid] = mov_giorno
+
+    print(f"Storico: caricati {len(grouped)} giorni")
+
+    tree_storico.update_idletasks()
+
+def toggle_giorno(event):
+    region = tree_storico.identify("region", event.x, event.y)
+    if region != "cell":
+        return
+
+    item = tree_storico.identify_row(event.y)
+    if not item or 'giorno' not in tree_storico.item(item, "tags"):
+        return
+
+    if tree_storico.get_children(item):
+        # collassa
+        for child in tree_storico.get_children(item):
+            tree_storico.delete(child)
+        tree_storico.set(item, 'Icona', '')
+    else:
+        # espandi
+        movs = movimenti_per_giorno.get(item, [])
+        for direzione, articolo, magazzino, quantita in movs:
+            tag = 'entrata' if direzione == 'ENTRATA' else 'uscita'
+            descr = f"{articolo}  ({magazzino})"
+            tree_storico.insert(item, 'end', values=('', '', direzione, quantita, descr), tags=('dettaglio', tag))
+        tree_storico.set(item, 'Icona', '▶')  # o usa '-' o un simbolo
+
+
 
 def genera_report():
     data_rep = calendario_report.get_date().strftime('%Y-%m-%d')
@@ -232,19 +294,7 @@ rb_uscita.pack(side="left")
 
 lbl_font = ("Arial", 11, "bold")
 entry_font = ("Arial", 12)
-"""
-tk.Label(frame, text="Roll:",font=lbl_font).grid(row=3, column=0, sticky="e", pady=3, padx=(0,2))
-roll_entry = tk.Entry(frame, width=6, font=("Arial", 11), justify="center")
-roll_entry.grid(row=3, column=1, sticky="w", pady=3, padx=(2,6))
 
-tk.Label(frame, text="Griglia:",  font=lbl_font).grid(row=3, column=2, sticky="e", pady=3, padx=(6,2))
-griglia_entry = tk.Entry(frame, width=6, font=("Arial", 11), justify="center")
-griglia_entry.grid(row=3, column=3, sticky="w", pady=3, padx=(2,6))
-
-tk.Label(frame, text="Cassetta CPR:", font=lbl_font).grid(row=3, column=4, sticky="e", pady=3, padx=(6,2))
-cpr_entry = tk.Entry(frame, width=6, font=("Arial", 11), justify="center")
-cpr_entry.grid(row=3, column=5, sticky="w", pady=3, padx=0)
-"""
 # Frame Roll
 frame_roll = tk.Frame(frame)
 frame_roll.grid(row=3, column=0, sticky="w", padx=(0, 6), pady=4)
@@ -295,23 +345,37 @@ tree_inventario.pack(padx=10, pady=5, fill="both", expand=True)
 frame_sto = tk.Frame(notebook)
 notebook.add(frame_sto, text="Storico")
 
-tk.Label(frame_sto, text="Ultimi movimenti", font=("Arial", 11, "bold")).pack(pady=8)
-tree_storico = ttk.Treeview(frame_sto, columns=('Data','Direzione','Magazzino','Articolo','Qtà'), show='headings', height=18)
+tk.Label(frame_sto, text="Storico movimenti", font=("Arial", 11, "bold")).pack(pady=8)
+
+tree_storico = ttk.Treeview(frame_sto,columns=('Icona', 'Data', 'Tipo', 'Qtà', 'Dettaglio'),show='tree headings',height=18)
+
+tree_storico.heading('#0', text='')          # colonna tree (per indentazione figli)
+tree_storico.heading('Icona', text='')
 tree_storico.heading('Data', text='Data')
-tree_storico.heading('Direzione', text='Mov.')
-tree_storico.heading('Magazzino', text='Magazzino')
-tree_storico.heading('Articolo', text='Articolo')
+tree_storico.heading('Tipo', text='Tipo')
 tree_storico.heading('Qtà', text='Qtà')
-tree_storico.column('Data', width=90)
-tree_storico.column('Articolo', width=140)
-tree_storico.column('Direzione', width=70)
-tree_storico.column('Magazzino', width=140)
-tree_storico.column('Qtà', width=60, anchor='center')
+tree_storico.heading('Dettaglio', text='Dettaglio / Saldo')
+
+tree_storico.column('#0', width=30)          # spazio per indentazione
+tree_storico.column('Icona', width=30, anchor='center')
+tree_storico.column('Data', width=110, anchor='center')
+tree_storico.column('Tipo', width=130)
+tree_storico.column('Qtà', width=80, anchor='center')
+tree_storico.column('Dettaglio', width=350)
+
 tree_storico.pack(padx=10, pady=5, fill="both", expand=True)
+# Bind doppio click
+tree_storico.bind("<Double-1>", toggle_giorno)
+
+# Stili
+tree_storico.tag_configure('giorno', font=('Arial', 10, 'bold'), background='#e8f4ff')
+tree_storico.tag_configure('entrata', foreground='#006400')
+tree_storico.tag_configure('uscita', foreground='#8B0000')
+tree_storico.tag_configure('dettaglio', background='#f8f9fa')
 
 # ── Tab Report ──────────────────────────────────
 frame_rep = tk.Frame(notebook)
-notebook.add(frame_rep, text="Report giorno")
+notebook.add(frame_rep, text="Report Giornaliero")
 
 frame_rep_top = tk.Frame(frame_rep)
 frame_rep_top.pack(pady=8)
@@ -337,6 +401,9 @@ tree_report.column('Articolo', width=140)
 tree_report.column('Entrate', width=90, anchor='center')
 tree_report.column('Uscite', width=90, anchor='center')
 tree_report.pack(padx=10, pady=5, fill="both", expand=True)
+
+# Forza apertura del tab Storico all'avvio (per vedere subito se funziona)
+notebook.select(2)  # 0=Registrazione, 1=Inventario, 2=Storico, 3=Report
 
 # Esporta globale
 tk.Button(root, text="Esporta tutto in CSV", command=esporta_csv,
