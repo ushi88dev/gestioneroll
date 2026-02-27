@@ -94,6 +94,7 @@ def registra_movimenti():
 
     #aggiorna_inventario()
     aggiorna_storico()
+    aggiorna_valore_cauzioniOFC()
 
 def annulla_ultimo():
     if not messagebox.askyesno("Conferma", "Annullare l'ultimo movimento inserito?"):
@@ -108,6 +109,7 @@ def annulla_ultimo():
     beep_semplice()
     aggiorna_inventario()
     aggiorna_storico()
+    aggiorna_valore_cauzioniOFC()
 
 def aggiorna_direzione(*args):
     mag = magazzino_var.get()
@@ -201,7 +203,51 @@ def toggle_giorno(event):
             tree_storico.insert(item, 'end', values=('', '', direzione, quantita, descr), tags=('dettaglio', tag))
         tree_storico.set(item, 'Icona', '▶')  # o usa '-' o un simbolo
 
+def aggiorna_valore_cauzioniOFC():
+    for item in tree_cauzioni.get_children():
+        tree_cauzioni.delete(item)
 
+    cursor.execute('''
+        SELECT data, articolo, SUM(quantita) AS entrate
+        FROM movimenti
+        WHERE magazzino IN ('Carne', 'Ortofrutta')
+          AND direzione = 'ENTRATA'
+        GROUP BY data, articolo
+        ORDER BY data DESC
+    ''')
+    rows = cursor.fetchall()
+
+    if not rows:
+        tree_cauzioni.insert('', 'end', values=('', 'Nessuna entrata in Carne/Ortofrutta', '', '', ''))
+        return
+
+    from collections import defaultdict
+    grouped = defaultdict(dict)
+    for data, art, entrate in rows:
+        grouped[data][art] = entrate
+
+    costi = {'Roll': 52, 'Griglia': 8, 'Cassetta CPR': 4}
+    totale_cumulato = 0.0
+
+    for data in sorted(grouped.keys(), reverse=True):
+        entrate_art = grouped[data]
+
+        valore_giorno = 0.0
+        row_values = [data]
+
+        for art in ['Roll', 'Griglia', 'Cassetta CPR']:
+            q = entrate_art.get(art, 0)
+            valore_art = q * costi[art]
+            valore_giorno += valore_art
+            row_values.append(f"{q} × {costi[art]} € = {valore_art:.2f} €")
+
+        totale_cumulato += valore_giorno
+        row_values.append(f"{valore_giorno:.2f} €")
+
+        tree_cauzioni.insert('', 'end', values=row_values)
+
+    # Riga totale cumulato
+    tree_cauzioni.insert('', 'end', values=('', '', '', '', f"Totale cauzioni cumulato: {totale_cumulato:.2f} €"), tags=('totale',))
 
 def genera_report():
     data_rep = calendario_report.get_date().strftime('%Y-%m-%d')
@@ -242,7 +288,7 @@ def beep_semplice():
 
 root = tk.Tk()
 root.title("Gestione Roll / Griglie / CPR")
-root.geometry("800x400")
+root.geometry("1200x600")
 root.resizable(False, False)
 
 notebook = ttk.Notebook(root)
@@ -379,16 +425,38 @@ tree_report.column('Entrate', width=90, anchor='center')
 tree_report.column('Uscite', width=90, anchor='center')
 tree_report.pack(padx=10, pady=5, fill="both", expand=True)
 
+# ── Tab Cauzioni Carne/Ortofrutta ───────────────
+frame_cauzioni = tk.Frame(notebook)
+notebook.add(frame_cauzioni, text="Cauzioni C/O")
+
+tk.Label(frame_cauzioni, text="Valore entrate Carne e Ortofrutta (cauzioni)", font=("Arial", 11, "bold")).pack(pady=8)
+
+tree_cauzioni = ttk.Treeview(frame_cauzioni, columns=('Data', 'Roll', 'Griglia', 'Cassetta CPR', 'Valore Giorno €'),show='headings', height=18)
+
+tree_cauzioni.heading('Data', text='Data')
+tree_cauzioni.heading('Roll', text='Roll')
+tree_cauzioni.heading('Griglia', text='Griglia')
+tree_cauzioni.heading('Cassetta CPR', text='Cassetta CPR')
+tree_cauzioni.heading('Valore Giorno €', text='Valore Giorno €')
+
+tree_cauzioni.column('Data', width=100, anchor='center')
+tree_cauzioni.column('Roll', width=140)
+tree_cauzioni.column('Griglia', width=140)
+tree_cauzioni.column('Cassetta CPR', width=140)
+tree_cauzioni.column('Valore Giorno €', width=140, anchor='center')
+
+tree_cauzioni.tag_configure('totale', font=('Arial', 10, 'bold'), background='#e6ffe6')
+
+tree_cauzioni.pack(padx=10, pady=5, fill="both", expand=True)
 
 # Esporta globale
-tk.Button(root, text="Esporta tutto in CSV", command=esporta_csv,
-          bg="#2196F3", fg="white", font=("Arial", 10, "bold")).pack(pady=8)
+tk.Button(root, text="Esporta tutto in CSV", command=esporta_csv, bg="#2196F3", fg="white", font=("Arial", 10, "bold")).pack(pady=8)
 
 # Avvio
 ##aggiorna_inventario()
 aggiorna_storico()
 genera_report()
 aggiorna_direzione()  # stato iniziale
-
+aggiorna_valore_cauzioniOFC()
 root.mainloop()
 conn.close()
